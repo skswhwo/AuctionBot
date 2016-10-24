@@ -3,8 +3,8 @@ require './Item'
 require './Participant'
 require './Dealer'
 
-token = ''
-auction_chat_id = ''
+@token = ''
+@auction_chat_id = ''  #test
 
 public_command = [  
   "/status",
@@ -23,7 +23,7 @@ command =  [
   "/finish",
   "/stop"]
 
-  Telegram::Bot::Client.run(token, logger: Logger.new("output.log")) do |bot|  
+  Telegram::Bot::Client.run(@token, logger: Logger.new("output.log")) do |bot|  
   @bot = bot
   @bot.logger.info('Bot has been started')
   
@@ -66,14 +66,40 @@ command =  [
   
   @bot.listen do |message|
     @message = message
-    
+  
+    def check_timer
+      @timer.kill if @timer
+      @timer = Thread.new do
+        sleep 540
+        if @ongoing_auction
+          @bot.api.send_message(chat_id: @auction_chat_id, text: "경매 종료 1분전 입니다.")
+          sleep 60
+          if @ongoing_auction
+            if last_participant 
+              @bot.api.send_message(chat_id: @auction_chat_id, text: "경매가 종료되었습니다")
+              @bot.api.send_message(chat_id: @auction_chat_id, text: "최종 낙찰가는 #{last_participant.price}원 입니다")
+              @bot.api.send_message(chat_id: @auction_chat_id, text: "#{last_participant.name}님 축하드립니다. 짝짝짝")
+              @bot.api.send_message(chat_id: last_participant.chat_id, text: "#{last_participant.name}님 낙찰 축하드립니다. 짝짝짝")
+            else 
+              @bot.api.send_message(chat_id: @auction_chat_id, text: "경매가 유찰되었습니다.\n다음에 또 만나요~")
+            end
+            initialize_auction
+          end
+        end
+      end
+    end
+      
     def getPrice
       price = Integer(@message.text) rescue nil
       @bot.api.send_message(chat_id: @message.chat.id, text: "가격을 잘못 입력하셨습니다. ex> 2000") if price == nil
       price
     end
     
-    if isDealer?
+    if message.text.start_with?('/message,')
+      
+      @bot.api.send_message(chat_id: @auction_chat_id, text: message.text[9..-1])
+      
+    elsif isDealer?
       if command.include?(message.text)
         #command        
         
@@ -93,9 +119,9 @@ command =  [
         when '/status'
           
           if @ongoing_auction
-            @bot.api.send_message(chat_id: auction_chat_id, text: "진행 중인 상품은 '#{@item.title}' 입니다")
-            @bot.api.send_message(chat_id: auction_chat_id, text: "#{@item.desc}")
-            @bot.api.send_message(chat_id: auction_chat_id, text: "현재 호가는 #{current_price}원 입니다")
+            @bot.api.send_message(chat_id: @auction_chat_id, text: "진행 중인 상품은 '#{@item.title}' 입니다")
+            @bot.api.send_message(chat_id: @auction_chat_id, text: "#{@item.desc}")
+            @bot.api.send_message(chat_id: @auction_chat_id, text: "현재 호가는 #{current_price}원 입니다")
             if last_participant
               @bot.api.send_message(chat_id: @dealer.chat_id, text: "#{last_participant.name}님이 최고가 입니다")
             else
@@ -135,12 +161,13 @@ command =  [
         when '/start'
           if @item.isValid?
             @bot.api.send_message(chat_id: message.chat.id, text: "경매를 시작합니다")
-            @bot.api.send_message(chat_id: auction_chat_id, text: "새로운 경매 물품이 올라왔습니다")
-            @bot.api.send_message(chat_id: auction_chat_id, text: @item.title)
-            @bot.api.send_message(chat_id: auction_chat_id, text: @item.desc)
-            @bot.api.send_message(chat_id: auction_chat_id, text: "경매가는 #{@item.price}원부터 시작하겠습니다")
-            @bot.api.send_message(chat_id: auction_chat_id, text: "마지막 호가 후, 10분이 지나면 경매가 종료됩니다")
+            @bot.api.send_message(chat_id: @auction_chat_id, text: "새로운 경매 물품이 올라왔습니다")
+            @bot.api.send_message(chat_id: @auction_chat_id, text: @item.title)
+            @bot.api.send_message(chat_id: @auction_chat_id, text: @item.desc)
+            @bot.api.send_message(chat_id: @auction_chat_id, text: "경매가는 #{@item.price}원부터 시작하겠습니다")
+            @bot.api.send_message(chat_id: @auction_chat_id, text: "마지막 호가 후, 10분이 지나면 경매가 종료됩니다")
             @ongoing_auction = true
+            check_timer
           else
             @bot.api.send_message(chat_id: message.chat.id, text: "경매 물품 정보를 아직 입력하지 않았습니다")
           end
@@ -149,12 +176,12 @@ command =  [
           if @ongoing_auction == false
             @bot.api.send_message(chat_id: message.chat.id, text: "진행 중인 경매가 없습니다.")
           elsif last_participant 
-            @bot.api.send_message(chat_id: auction_chat_id, text: "경매가 종료되었습니다")
-            @bot.api.send_message(chat_id: auction_chat_id, text: "최종 낙찰가는 #{last_participant.price}원 입니다")
-            @bot.api.send_message(chat_id: auction_chat_id, text: "#{last_participant.name}님 축하드립니다. 짝짝짝")
+            @bot.api.send_message(chat_id: @auction_chat_id, text: "경매가 종료되었습니다")
+            @bot.api.send_message(chat_id: @auction_chat_id, text: "최종 낙찰가는 #{last_participant.price}원 입니다")
+            @bot.api.send_message(chat_id: @auction_chat_id, text: "#{last_participant.name}님 축하드립니다. 짝짝짝")
             @bot.api.send_message(chat_id: last_participant.chat_id, text: "#{last_participant.name}님 낙찰 축하드립니다. 짝짝짝")
           else 
-            @bot.api.send_message(chat_id: auction_chat_id, text: "경매가 유찰되었습니다.\n다음에 또 만나요~")
+            @bot.api.send_message(chat_id: @auction_chat_id, text: "경매가 유찰되었습니다.\n다음에 또 만나요~")
           end
           initialize_auction
           
@@ -187,28 +214,9 @@ command =  [
                 participant.chat_id = message.chat.id 
                 participant.price   = getPrice
                 @histories << participant
-                @bot.api.send_message(chat_id: auction_chat_id, text: "#{participant.price}원 나왔습니다")
-              
+                @bot.api.send_message(chat_id: @auction_chat_id, text: "#{participant.price}원 나왔습니다")              
                 @bot.logger.info("#{@item.title} > \t #{participant.name} \t #{getPrice}")
-                @timer.kill if @timer
-                @timer = Thread.new do
-                  sleep 60
-                  if @ongoing_auction
-                    @bot.api.send_message(chat_id: auction_chat_id, text: "경매 종료 1분전 입니다.")
-                    sleep 60
-                    if @ongoing_auction
-                      if last_participant 
-                        @bot.api.send_message(chat_id: auction_chat_id, text: "경매가 종료되었습니다")
-                        @bot.api.send_message(chat_id: auction_chat_id, text: "최종 낙찰가는 #{last_participant.price}원 입니다")
-                        @bot.api.send_message(chat_id: auction_chat_id, text: "#{last_participant.name}님 축하드립니다. 짝짝짝")
-                        @bot.api.send_message(chat_id: last_participant.chat_id, text: "#{last_participant.name}님 낙찰 축하드립니다. 짝짝짝")
-                      else 
-                        @bot.api.send_message(chat_id: auction_chat_id, text: "경매가 유찰되었습니다.\n다음에 또 만나요~")
-                      end
-                      initialize_auction
-                    end
-                  end
-                end  
+                check_timer
               else 
                 @bot.api.send_message(chat_id: message.chat.id, text: "호가보다 적은 금액을 입력하셨습니다")
               end
@@ -261,28 +269,9 @@ command =  [
               participant.chat_id = message.chat.id 
               participant.price   = getPrice
               @histories << participant
-              @bot.api.send_message(chat_id: auction_chat_id, text: "#{participant.price}원 나왔습니다")
-            
+              @bot.api.send_message(chat_id: @auction_chat_id, text: "#{participant.price}원 나왔습니다")
               @bot.logger.info("#{@item.title} > \t #{participant.name} \t #{getPrice}")
-              @timer.kill if @timer
-              @timer = Thread.new do
-                sleep 540
-                if @ongoing_auction
-                  @bot.api.send_message(chat_id: auction_chat_id, text: "경매 종료 1분전 입니다.")
-                  sleep 60
-                  if @ongoing_auction
-                    if last_participant 
-                      @bot.api.send_message(chat_id: auction_chat_id, text: "경매가 종료되었습니다")
-                      @bot.api.send_message(chat_id: auction_chat_id, text: "최종 낙찰가는 #{last_participant.price}원 입니다")
-                      @bot.api.send_message(chat_id: auction_chat_id, text: "#{last_participant.name}님 축하드립니다. 짝짝짝")
-                      @bot.api.send_message(chat_id: last_participant.chat_id, text: "#{last_participant.name}님 낙찰 축하드립니다. 짝짝짝")
-                    else 
-                      @bot.api.send_message(chat_id: auction_chat_id, text: "경매가 유찰되었습니다.\n다음에 또 만나요~")
-                    end
-                    initialize_auction
-                  end
-                end
-              end  
+              check_timer
             else 
               @bot.api.send_message(chat_id: message.chat.id, text: "호가보다 적은 금액을 입력하셨습니다")
             end
